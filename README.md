@@ -21,13 +21,16 @@ This is inspired by [stake.tax](https://stake.tax/), which does much more than I
 
 
 ## Quick Start
-### download & compile
+### Download & compile
 ```
 git clone https://github.com/alexpGH/stakingtax.git
 cd stakingtax
 go mod tidy
 go build stakingtax.go
+
+cp addrTemplate.yaml addr.yaml
 ```
+
 
 
 ### Display command line options
