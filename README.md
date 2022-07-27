@@ -179,7 +179,7 @@ Under the hood, a
 ```
 daemon query txs --events 'message.sender=addr' --page x --limit y 
 ```
-is used to retrieve all transactions where the given adress occurs as sender.
+is used to retrieve all transactions where the given address occurs as sender.
 
 Internally, we then check for message types to sort out those relevant for staking tax (based on the list given in the config file). E.g. just sending tokens or receiving token is not tax relevant.
 
@@ -190,7 +190,7 @@ This also holds for the restake code (tx issued and payed by the validator), as 
 
 We then note the amount of retrieved tokens (this are tax relevant rewards) and payed fees (only when payment signature relates to your pubKey).
 
-The only *problematic* case is the grant tx (MsgGrant). I only use grant in context with adresses I stake from for restaking (no other grants on these addresses), so I can retrieve all grant tx's and note the fees payed.
+The only *problematic* case is the grant tx (MsgGrant). I only use grant in context with addresses I stake from for restaking (no other grants on these addresses), so I can retrieve all grant tx's and note the fees payed.
 If this is not the case for your situation you could leave them out (by deleting hte line in the config; the tx fees are typically negligible).
 
 There is another caveat in retation to the grant transactions: the only show up when you payed tx fees. This is ok, as we are not interested in 0 fees txs. The reason for this is that, if you don't pay any fees for the tx, you do not occur as sender in the event log.

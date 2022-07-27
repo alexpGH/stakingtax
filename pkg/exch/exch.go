@@ -29,11 +29,11 @@ func AddFiatBaseInfo2TaxCsvData(tradePairs4Tax *configData.TradePairs4TaxType, a
 	for _, row := range allNewTaxCsvRows {
 
 		// get conversion fact (we can neglect tOk here, as it is handled internally)
-		amountBase, fact, tOk = GetFiatBaseAmountForDay(tradePairs4Tax, row.Timestamp, row.RecievedAmount, sLogSep)
+		amountBase, fact, tOk = GetFiatBaseAmountForDay(tradePairs4Tax, row.Timestamp, row.ReceivedAmount, sLogSep)
 
 		//if not ok we leave the value as initialized (0)
 		if tOk {
-			row.RecievedFiatAmount = amountBase
+			row.ReceivedFiatAmount = amountBase
 
 			//no need to query again, we know the factor:
 			row.FeeFiatAmount = row.FeeAmount * fact

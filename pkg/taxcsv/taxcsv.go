@@ -15,11 +15,11 @@ type TaxCsv struct {
 	Timestamp          string  `csv:"timestamp"`
 	Blockheight        int     `csv:"blockheight"`
 	MsgType            string  `csv:"msg_type"`
-	RecievedAmount     float64 `csv:"received_amount"`
-	RecievedCurrency   string  `csv:"received_currency"`
+	ReceivedAmount     float64 `csv:"received_amount"`
+	ReceivedCurrency   string  `csv:"received_currency"`
 	FeeAmount          float64 `csv:"fee_amount"`
 	FeeCurrency        string  `csv:"fee_currency"`
-	RecievedFiatAmount float64 `csv:"received_fiat"`
+	ReceivedFiatAmount float64 `csv:"received_fiat"`
 	FeeFiatAmount      float64 `csv:"fee_fiat"`
 	CoinPrice          float64 `csv:"coin_price_that_day"`
 	TxId               string  `csv:"tx_id"`

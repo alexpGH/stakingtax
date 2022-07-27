@@ -272,7 +272,7 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 			newTaxCsvRow.TxId = tx.TxHash
 			newTaxCsvRow.Addr = ourAddr
 			newTaxCsvRow.Key = ourPubKey
-			newTaxCsvRow.RecievedCurrency = cfg.Networks[networkIdx].Denom
+			newTaxCsvRow.ReceivedCurrency = cfg.Networks[networkIdx].Denom
 
 			for _, event := range logEvents.Events {
 
@@ -307,7 +307,7 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 							} else {
 								recAmount, err = strconv.ParseFloat(s1, 64)
 								utils.ErrDefaultFatal(err)
-								newTaxCsvRow.RecievedAmount += recAmount / math.Pow10(cfg.Networks[networkIdx].Exponent)
+								newTaxCsvRow.ReceivedAmount += recAmount / math.Pow10(cfg.Networks[networkIdx].Exponent)
 							}
 
 						}
