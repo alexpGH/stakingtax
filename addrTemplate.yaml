@@ -1,0 +1,15 @@
+#config file for staking tax: tax relevant addresses
+#add an entry for each address
+addresses:
+  - chainName: fetchhub
+    addrList:
+      - addr: fetch...
+        pubKey: yourPubKey
+
+
+  - chainName: cosmoshub
+    addrList:
+      - addr: cosmos...
+        pubKey: yourPubKey
+      
+

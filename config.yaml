@@ -1,0 +1,49 @@
+#config file for stakingtax
+
+networksBasics:
+  chainRegistry: https://raw.githubusercontent.com/cosmos/chain-registry
+  chainExtraPath: /master/
+  chainInfo: /chain.json
+
+networks:
+  - name: fetchhub
+    denom: fet
+    exponent: 18
+    feedenom: afet
+    tradePairs4Tax:       #tradePairs4Tax 
+      endpoint: binance
+      pairs:
+        - FETBTC
+        - BTCEUR
+  - name: cosmoshub
+    denom: atom
+    exponent: 6  
+    feedenom: uatom
+    tradePairs4Tax:
+      endpoint: cbpro
+      pairs:
+        - ATOM-EUR
+  
+query:
+  pageLimit: 10
+
+taxRelevantMessageTypes:
+  - /cosmos.staking.v1beta1.MsgDelegate
+  - /cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward
+  - /cosmos.staking.v1beta1.MsgBeginRedelegate
+  - /cosmos.authz.v1beta1.MsgExec
+  - /cosmos.authz.v1beta1.MsgGrant
+
+#tradePairs4Tax:
+# enpoints for now are [cbpro]
+# pairs lists the required pairs (in format used by the endpoint) to get to the base unit for tax, e.g. EUR. The conversion will happen in the given sequence. 
+# trade pairs can be retrieved from: (easiest ist to search through the raw data in the browser) 
+# cbpro: https://api.exchange.coinbase.com/products
+# binance: https://api.binance.com/api/v3/exchangeInfo
+
+
+
+#https://raw.githubusercontent.com/cosmos/chain-registry/master/cosmoshub/chain.json  
+#https://github.com/cosmos/chain-registry/blob/master/cosmoshub/assetlist.json
+#https://github.com/cosmos/chain-registry/blob/master/fetchhub/chain.json
+#https://github.com/cosmos/chain-registry/blob/master/cosmoshub/chain.json  
