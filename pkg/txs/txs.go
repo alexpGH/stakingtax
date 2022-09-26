@@ -77,7 +77,12 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 		//get the idx in the cfg
 		networkIdx = slices.Index(networks, network.ChainName)
 		if networkIdx == -1 {
-			log.Println("Skipping unknonw network:" + network.ChainName + " give in addr.yaml, but not present in config")
+			log.Println("[W] Skipping unknonw network:" + network.ChainName + " given in addr.yaml, but not present in config")
+			continue //next network
+		}
+
+		if !chainInfos[networkIdx].TProcess {
+			log.Println("[I] Skipping inactivated network: " + network.ChainName + " (in this run due to unresponsive node)")
 			continue //next network
 		}
 
@@ -99,14 +104,14 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 			txCountOld = taxcsv.GetLastTxCount(network.ChainName + "_" + ourAddr + "_count.txt")
 
 			//=== get only 1 tx to get header info about nr of total transactions
-			totalCount = queryTotalCount(chainInfos[i].DaemonName, ourAddr)
-			blockHeight = queryHeight(chainInfos[i].DaemonName, ourAddr, totalCount)
+			totalCount = queryTotalCount(chainInfos[networkIdx].DaemonName, ourAddr)
+			blockHeight = queryHeight(chainInfos[networkIdx].DaemonName, ourAddr, totalCount)
 			log.Println("      [I] txCountOld/totalCount: " + strconv.Itoa(txCountOld) + "/" + strconv.Itoa(totalCount))
 
 			//=== hypothesis check
 			txCountUsed = txCountOld
 			if txCountOld != 0 {
-				txCountUsed = checkHypothesisUpdateTxCount(txCountOld, totalCount, blockHeight, blockHeightOld, chainInfos[i].DaemonName, ourAddr)
+				txCountUsed = checkHypothesisUpdateTxCount(txCountOld, totalCount, blockHeight, blockHeightOld, chainInfos[networkIdx].DaemonName, ourAddr, cfg.Query.TxStepBack)
 				//it is ensured that txCountUsed<=totalcount and in case they match, that also blockHeights match!
 			}
 
@@ -139,7 +144,7 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 				log.Println("   [I] querying page: " + strconv.Itoa(page) + "/" + strconv.Itoa(pageTotal) + " - this may take some time!")
 
 				//--- query txs
-				out, err := exec.Command(chainInfos[i].DaemonName, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", strconv.Itoa(pageLimit), "-out", "json").CombinedOutput()
+				out, err := exec.Command(chainInfos[networkIdx].DaemonName, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", strconv.Itoa(pageLimit), "-out", "json").CombinedOutput()
 				if err != nil {
 					s := string(out)
 					err = fmt.Errorf("%w; %v", err, s)
@@ -172,17 +177,21 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 			} //for over the pages
 
 			//=== add FIAT base value for receivedAmount and feeAmount
-			sLogSep = "   "
-			log.Println(sLogSep + "Getting Fiat conversion for received and fee amounts")
+			if len(allNewTaxCsvRows) > 0 {
+				sLogSep = "   "
+				log.Println(sLogSep + "Getting Fiat conversion for received and fee amounts")
 
-			//get trade pairs sub struct for conversion
-			tradePairs4Tax = &cfg.Networks[networkIdx].TradePairs4Tax
+				//get trade pairs sub struct for conversion
+				tradePairs4Tax = &cfg.Networks[networkIdx].TradePairs4Tax
 
-			//do the conversion for all rows
-			exch.AddFiatBaseInfo2TaxCsvData(tradePairs4Tax, allNewTaxCsvRows, sLogSep+"   ")
+				//do the conversion for all rows
+				exch.AddFiatBaseInfo2TaxCsvData(tradePairs4Tax, allNewTaxCsvRows, sLogSep+"   ")
 
-			//=== append new rows to csv file
-			taxcsv.AppendNewTaxRows(network.ChainName+"_"+ourAddr+".csv", allNewTaxCsvRows)
+				//=== append new rows to csv file
+				taxcsv.AppendNewTaxRows(network.ChainName+"_"+ourAddr+".csv", allNewTaxCsvRows)
+
+			}
+
 			log.Println("   [OK] done, txCount now: " + strconv.Itoa(txCountOld))
 
 		} //for over networks addresses in cfgAdr
@@ -337,7 +346,7 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 					}
 					//if we did not find a tax relevant message, report the message type
 					if !tMess {
-						log.Println("   skipping unhandled MsgType: " + currMess)
+						log.Println("   [I] skipping unhandled MsgType: " + currMess)
 					}
 				} // if event Message
 
@@ -379,7 +388,7 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 
 //
 //returns correct txCount
-func checkHypothesisUpdateTxCount(txCountOld int, totalCount int, blockHeight int, blockHeightOld int, daemonName string, ourAddr string) int {
+func checkHypothesisUpdateTxCount(txCountOld int, totalCount int, blockHeight int, blockHeightOld int, daemonName string, ourAddr string, txStepBack int) int {
 
 	//=== hypothesis check: blockHeightOld is from last tx we received for txCountOld; if there has been pruning in the meantime,
 	//	  this does not match anymore. Cases:
@@ -426,9 +435,6 @@ func checkHypothesisUpdateTxCount(txCountOld int, totalCount int, blockHeight in
 		//var txsRespThin *TxsResp
 		//get exact the totalCount tx, blockHeightOld should be equal to txsRespThin.Txs[0].Height
 		//txsRespThin = queryOneTx(chainInfos[i].DaemonName, ourAddr, totalCount)
-		var txStepBack int
-		txStepBack = 10
-
 		var stepBackUsed int
 
 		//inint stepback
@@ -473,7 +479,71 @@ func checkHypothesisUpdateTxCount(txCountOld int, totalCount int, blockHeight in
 		return txCountOldUpdated
 	}
 
-}
+} //checkHypothesisUpdateTxCount
+
+func GetTxCountForAllRpcNodes(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, chainInfos []nw.ChainInfo, chainName string) {
+	var networkIdx int
+	var addrs []string
+	//var pubKeys []string
+	//var blockHeightOld, blockHeight int
+	var txCountOld int
+	var totalCount int
+	//var ourPubKey string
+	var nodeAddr string
+
+	log.Println("Querying network " + chainName + "for txCount =======================================================================")
+
+	//get cfg's networks and relevant message types
+	networks := cfg.GetNetworksFieldString("Name")
+
+	//get index of given chainName
+	cfgAdrIdx := indexInCfgAdr4chainName(cfgAdr, chainName)
+
+	//get the idx in the cfg
+	networkIdx = slices.Index(networks, chainName)
+	if networkIdx == -1 {
+		log.Println("Skipping unknonw network:" + chainName + " not present in config")
+		return
+	}
+
+	//here we have a valid network; extract given addr and pubkeys as slice (for simple Contains check later on)
+	addrs = cfgAdr.GetFieldString(cfgAdrIdx, "Addr")
+	//pubKeys = cfgAdr.GetFieldString(i, "PubKey")
+
+	for _, node := range chainInfos[networkIdx].Apis.Rpc {
+
+		//nodeAddr = nw.EnsurePortInAddress(node.Address)
+
+		nodeAddr = nw.CheckNode(chainInfos[networkIdx].DaemonName, node.Address, true)
+		if nodeAddr == "" {
+			log.Println("      [I] node skipped (not responsive): " + node.Address) //using node.Address here as nodeAddr is empty if not responsive
+			continue
+		}
+
+		//we need to handle each address individually, as cosmos query does not provide || for event filter (only &&)
+		//-> we can only get the txs per address individually
+		for _, ourAddr := range addrs {
+			//ourPubKey = pubKeys[j]
+
+			//log.Println("   addr: " + ourAddr)
+			//log.Println("   Checking totalCount hypothesis")
+
+			//=== get most current retrieved txs' blockheight (last line) from csv file and tx count
+			//blockHeightOld = taxcsv.GetLastBlockHeight(chainName + "_" + ourAddr + ".csv")
+			txCountOld = taxcsv.GetLastTxCount(chainName + "_" + ourAddr + "_count.txt")
+
+			//=== get only 1 tx to get header info about nr of total transactions
+			totalCount = queryTotalCountFromNode(chainInfos[networkIdx].DaemonName, ourAddr, nodeAddr)
+			//blockHeight = queryHeightFromNode(chainInfos[i].DaemonName, ourAddr, totalCount, node.Address)
+			log.Println("      [I] node: txCountOld/totalCount: " + nodeAddr + ": " + strconv.Itoa(txCountOld) + "/" + strconv.Itoa(totalCount))
+
+		} //for over networks addresses in cfgAdr
+
+	} // for over the rpc nodes
+
+	log.Println("[OK] Done querying nodes for txcount ==================================================================")
+
+} //GetTxCountForAllRpcNodes
 
 // get only 1 tx to get header info about nr of total transactions
 func queryTotalCount(daemonName string, ourAddr string) int {
@@ -489,12 +559,39 @@ func queryTotalCount(daemonName string, ourAddr string) int {
 	return totalCount
 }
 
+// get only 1 tx to get header info about nr of total transactions from a specific node
+func queryTotalCountFromNode(daemonName string, ourAddr string, node string) int {
+	var totalCount int
+	var txsRespThin *TxsResp
+	var err error
+
+	txsRespThin = queryOneTxFromNode(daemonName, ourAddr, node, 1)
+
+	totalCount, err = strconv.Atoi(txsRespThin.TotalCount)
+	utils.ErrDefaultFatal(err) //on err log.Fatal with details
+
+	return totalCount
+}
+
 func queryHeight(daemonName string, ourAddr string, txCount int) int {
 	var height int
 	var txsRespThin *TxsResp
 	var err error
 
 	txsRespThin = queryOneTx(daemonName, ourAddr, txCount)
+
+	height, err = strconv.Atoi(txsRespThin.Txs[0].Height)
+	utils.ErrDefaultFatal(err)
+
+	return height
+}
+
+func queryHeightFromNode(daemonName string, ourAddr string, txCount int, node string) int {
+	var height int
+	var txsRespThin *TxsResp
+	var err error
+
+	txsRespThin = queryOneTxFromNode(daemonName, ourAddr, node, txCount)
 
 	height, err = strconv.Atoi(txsRespThin.Txs[0].Height)
 	utils.ErrDefaultFatal(err)
@@ -516,4 +613,32 @@ func queryOneTx(daemonName string, ourAddr string, page int) *TxsResp {
 	utils.ErrDefaultFatal(err) //on err log.Fatal with details
 
 	return txsRespThin
+}
+
+// get only 1 tx and unmarhsal
+func queryOneTxFromNode(daemonName string, ourAddr string, node string, page int) *TxsResp {
+
+	txsRespThin := &TxsResp{}
+	out, err := exec.Command(daemonName, "--node", node, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", "1", "-out", "json").CombinedOutput()
+
+	if err != nil {
+		s := string(out)
+		err = fmt.Errorf("%w; %v", err, s)
+		utils.ErrDefaultFatal(err) //on err log.Fatal with detail
+	}
+	err = json.Unmarshal(out, &txsRespThin)
+	utils.ErrDefaultFatal(err) //on err log.Fatal with details
+
+	return txsRespThin
+}
+
+//This is similar to the standard Index function for slices, but applied
+//to our slice cfgAdr.Addresses holding the chainName in a substruct
+func indexInCfgAdr4chainName(cfgAdr *configData.CfgAdr, chainName string) int {
+	for i, vs := range cfgAdr.Addresses {
+		if chainName == vs.ChainName {
+			return i
+		}
+	}
+	return -1
 }

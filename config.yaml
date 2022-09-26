@@ -10,22 +10,26 @@ networks:
     denom: fet
     exponent: 18
     feedenom: afet
+    keepConfigNode: true
     tradePairs4Tax:       #tradePairs4Tax 
       endpoint: binance
       pairs:
         - FETBTC
         - BTCEUR
+
   - name: cosmoshub
     denom: atom
     exponent: 6  
     feedenom: uatom
+    keepConfigNode: true
     tradePairs4Tax:
       endpoint: cbpro
       pairs:
         - ATOM-EUR
   
 query:
-  pageLimit: 10
+  pageLimit: 10 #query in bunches of this
+  txStepBack: 1 #in case we need to go backwards for matsching blockheight, start with this stepsize, doubled in each cycle
 
 taxRelevantMessageTypes:
   - /cosmos.staking.v1beta1.MsgDelegate
@@ -33,6 +37,8 @@ taxRelevantMessageTypes:
   - /cosmos.staking.v1beta1.MsgBeginRedelegate
   - /cosmos.authz.v1beta1.MsgExec
   - /cosmos.authz.v1beta1.MsgGrant
+  - /cosmos.staking.v1beta1.MsgUndelegate
+
 
 #tradePairs4Tax:
 # enpoints for now are [cbpro]

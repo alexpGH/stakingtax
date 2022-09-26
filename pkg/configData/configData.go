@@ -23,6 +23,8 @@ type Cfg struct {
 		Denom          string             `yaml:"denom"`
 		Exponent       int                `yaml:"exponent"`
 		FeeDenom       string             `yaml:"feedenom"`
+		KeepConfigNode bool               `yaml:"keepConfigNode"`
+		Node           string             `yaml:"node"`
 		TradePairs4Tax TradePairs4TaxType `yaml:"tradePairs4Tax"`
 		// TradePairs4Tax struct {
 		// 	EndPoint string   `yaml:"endpoint"`
@@ -30,7 +32,8 @@ type Cfg struct {
 		// } `yaml:"tradePairs4Tax"`
 	} `yaml:"networks"`
 	Query struct {
-		PageLimit int `yaml:"pageLimit"`
+		PageLimit  int `yaml:"pageLimit"`
+		TxStepBack int `yaml:"txStepBack"`
 	} `yaml:"query"`
 	TaxRelevantMessageTypes []string `yaml:"taxRelevantMessageTypes"`
 }

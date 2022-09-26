@@ -69,13 +69,15 @@ func UpdateLastTxCount(pathFile string, txCount int) {
 }
 
 func AppendNewTaxRows(pathFile string, allNewTaxCsvRows []*TaxCsv) {
-	f, err := os.OpenFile(pathFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-	utils.ErrDefaultFatal(err)
-	defer f.Close()
 
-	err = gocsv.MarshalFile(&allNewTaxCsvRows, f)
-	utils.ErrDefaultFatal(err)
+	if len(allNewTaxCsvRows) > 0 {
+		f, err := os.OpenFile(pathFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		utils.ErrDefaultFatal(err)
+		defer f.Close()
 
+		err = gocsv.MarshalFile(&allNewTaxCsvRows, f)
+		utils.ErrDefaultFatal(err)
+	}
 }
 
 // // If the file doesn't exist, create it, or append to the file

@@ -16,6 +16,7 @@ type Cfl struct {
 	addrPathFile   string
 	tHelp          bool
 	tCheckOnly     bool
+	tQueryRpcNodes bool
 }
 
 // logger configured to emit app name, line number, timestamps etc.
@@ -56,6 +57,14 @@ func main() {
 		return
 	}
 
+	if cfl.tQueryRpcNodes {
+		for _, v := range chainInfos {
+			txs.GetTxCountForAllRpcNodes(cfg, cfgAdr, chainInfos, v.ChainName)
+		}
+		log.Println("Querying RPC nodes done.")
+		return
+	}
+
 	//=== now get and process all txs
 	txs.GetProcessTxsForNetworks(cfg, cfgAdr, chainInfos)
 
@@ -67,6 +76,7 @@ func initFlags(cfl *Cfl) {
 	flag.BoolVar(&cfl.tHelp, "help", false, "print help")
 	flag.StringVar(&cfl.configPathFile, "configPathFile", "./config.yaml", "name (and path) of config file")
 	flag.StringVar(&cfl.addrPathFile, "addrPathFile", "./addr.yaml", "name (and path) of file holding the addresses to scan for tax relevant txs")
-	flag.BoolVar(&cfl.tCheckOnly, "checkOnly", false, "check/update only the networks configuration")
+	flag.BoolVar(&cfl.tCheckOnly, "checkOnly", false, "only check/update the networks configuration")
+	flag.BoolVar(&cfl.tQueryRpcNodes, "queryRpcNodes", false, "only query the RPC nodes for their number of relevant txs")
 
 }

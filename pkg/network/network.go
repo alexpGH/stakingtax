@@ -30,6 +30,7 @@ type ChainInfo struct {
 			Address string `json:"address"`
 		} `json:"rpc"`
 	} `json:"apis"`
+	TProcess bool `json:"ourExtraParameter"`
 }
 
 //checks network configurations and possibly updates the config
@@ -48,7 +49,7 @@ func CheckNetworks(cfg *configData.Cfg) []ChainInfo {
 
 		ensureValidDaemonVersion(chainInfos[i])
 		ensureCorrectConfigChainId(chainInfos[i])
-		ensureCorrectConfigNode(chainInfos[i])
+		ensureCorrectConfigNode(&chainInfos[i], chainDetails.KeepConfigNode)
 	}
 	log.Println("[OK] checking networks ==========================================================================")
 	log.Println("")
@@ -78,6 +79,8 @@ func fetchChainInfo(cfg *configData.Cfg, chainName string) ChainInfo {
 		log.Fatal("Chain name from config - " + chainName + "- and from github's jsons - " + chainI.ChainName + " - do not match!")
 	}
 
+	//set our internal parameter - might be set to false in case node is not responsive etc.
+	chainI.TProcess = true
 	return chainI
 
 } //fetchChainInfo
@@ -139,16 +142,12 @@ func ensureCorrectConfigChainId(chainI ChainInfo) {
 
 } //ensureCorrectConfigChainId
 
-//helper function: checks status of a gven node - is it responsive?
-func checkNode(daemonName string, currAddr string, tcheckAddChannel bool) string {
+//helper function: checks status of a gien node - is it responsive?
+func CheckNode(daemonName string, currAddr string, tcheckAddChannel bool) string {
 
 	finalAddr := currAddr
 	if tcheckAddChannel {
-		//check if there is a :channel present, if not use default :443 (assumes a 3 digit channel)
-		//fmt.Println(currAddr[len(currAddr)-4 : len(currAddr)-3])
-		if currAddr[len(currAddr)-4:len(currAddr)-3] != ":" {
-			finalAddr += ":443"
-		}
+		finalAddr = EnsurePortInAddress(currAddr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
@@ -163,8 +162,23 @@ func checkNode(daemonName string, currAddr string, tcheckAddChannel bool) string
 	}
 } //checkNode
 
+func EnsurePortInAddress(currAddr string) string {
+	finalAddr := currAddr
+	//check if there is a :channel present, if not use default :443 (assumes a 3 digit channel)
+	//fmt.Println(currAddr[len(currAddr)-4 : len(currAddr)-3])
+	if currAddr[len(currAddr)-4:len(currAddr)-3] != ":" {
+		//check for trailng / which is invalid
+		//log.Print(currAddr[len(currAddr)-1:])
+		if currAddr[len(currAddr)-1:] == "/" {
+			finalAddr = currAddr[0 : len(currAddr)-1]
+		}
+		finalAddr += ":443"
+	}
+	return finalAddr
+}
+
 //ensures the node config to be correct (responsive node)
-func ensureCorrectConfigNode(chainI ChainInfo) {
+func ensureCorrectConfigNode(chainI *ChainInfo, keepConfigNode bool) {
 	log.Println("Checking to have a responsive node")
 
 	out, err := exec.Command(chainI.DaemonName, "config", "node").CombinedOutput()
@@ -174,20 +188,27 @@ func ensureCorrectConfigNode(chainI ChainInfo) {
 
 	if nodeCurr != "" {
 		log.Println("	Checking responsiveness of your node in config: " + nodeCurr)
-		addrUsed := checkNode(chainI.DaemonName, nodeCurr, false) //false: do not check channel, use it as it is
+		addrUsed := CheckNode(chainI.DaemonName, nodeCurr, false) //false: do not check channel, use it as it is
 		if addrUsed != "" {
 			log.Println("	[OK] -> node responded")
 			return
 		} else {
-			log.Println("	-> node did not respond, searching a responsive one")
+			if keepConfigNode {
+				chainI.TProcess = false //mark as not to be processed
+				log.Println("	-> node did not respond, but keepConfigNode in config.yaml=true -> excluding this network from further processing in this run")
+				return
+			} else {
+				log.Println("	-> node did not respond, keepConfigNode in config.yaml=false -> searching a responsive one")
+				chainI.TProcess = false //for now
+			}
 		}
 	}
 
-	//here we are left wit the task to find a responsive node from the chain registry list
+	//here we are left with the task to find a responsive node from the chain registry list
 	tFound := false
 	var addrUsed string
 	for _, v := range chainI.Apis.Rpc {
-		addrUsed = checkNode(chainI.DaemonName, v.Address, true) //true: check channel
+		addrUsed = CheckNode(chainI.DaemonName, v.Address, true) //true: check channel
 		if addrUsed != "" {
 			log.Println("	[OK] -> " + addrUsed + " responded, adding it to config")
 			tFound = true
@@ -195,8 +216,11 @@ func ensureCorrectConfigNode(chainI ChainInfo) {
 		}
 	}
 
-	if !tFound {
-		log.Fatal("No responsive node found, giving up. " + utils.FatalDetails())
+	if tFound {
+		chainI.TProcess = true //reactivate as we found a responsive node
+	} else {
+		log.Println("	No responsive node found, giving up.")
+		return
 	}
 
 	//--- try to update config
