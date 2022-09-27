@@ -67,11 +67,20 @@ Example output:
  Check networks only done.
 
 ```
+### Run queryRpcNodes only 
+```
+./stakingtax -queryRpcNodes
+```
+Tests all the RPC nodes listed in the chain's registries for the chains given in the config file and provides an overview about which node is responsive or not and if so, how many relevant transactions you can receive from it.
+You need to try out some nodes based on the generated list, as not every node consitently provides answers to the requests posed when fetching all transactions in a full run.
+
 ### The config file
 The config file (default is config.yaml) allows to adapt the basic source of information under `networkBasics` (no adaption necessary),
 followed by a list of networks you want to retrieve tax info for.
 
-The tradePairs4Tax subblock allows to use one of currently two open access exchange APIs to convert from network denom to your Fiat base, e.g. in the fetch.ai example from FET -> BTC -> €.
+`keepConfigNode` determines if the node in your config (e.g. gaiad config node) is preserved even if it is currently not responsive or will be replaced by a responsive one from the registry list. This is useful to keep the node setting pointing at a node you usually retrieve your data from, which however is temporarily unavailable. Using true, you can retry without spoiling your config.
+
+The `tradePairs4Tax` subblock allows to use one of currently two open access exchange APIs to convert from network denom to your Fiat base, e.g. in the fetch.ai example from FET -> BTC -> €.
 Use as many pairs as necessary in your case.
 
 `pageLimit` sets the page size used when retrieving messages. The setting should approximately match the number of expected messages (per address) for frequent syncing. 
@@ -92,6 +101,7 @@ networks:
     denom: fet
     exponent: 18
     feedenom: afet
+    keepConfigNode: false
     tradePairs4Tax:       #tradePairs4Tax 
       endpoint: binance
       pairs:
@@ -101,6 +111,7 @@ networks:
     denom: atom
     exponent: 6  
     feedenom: uatom
+    keepConfigNode: true
     tradePairs4Tax:
       endpoint: cbpro
       pairs:
@@ -108,6 +119,7 @@ networks:
   
 query:
   pageLimit: 40
+  txStepBack: 1 #in case we need to go backwards for matsching blockheight, start with this stepsize, doubled in each cycle
   
 taxRelevantMessageTypes:
   - /cosmos.staking.v1beta1.MsgDelegate
@@ -115,6 +127,7 @@ taxRelevantMessageTypes:
   - /cosmos.staking.v1beta1.MsgBeginRedelegate
   - /cosmos.authz.v1beta1.MsgExec
   - /cosmos.authz.v1beta1.MsgGrant
+  - /cosmos.staking.v1beta1.MsgUndelegate
 
 ```
 ### Address file
