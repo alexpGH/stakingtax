@@ -150,7 +150,7 @@ func CheckNode(daemonName string, currAddr string, tcheckAddChannel bool) string
 		finalAddr = EnsurePortInAddress(currAddr)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel() // The cancel should be deferred so resources are cleaned up
 	cmd := exec.CommandContext(ctx, daemonName, "status", "--node", finalAddr)
 	_, err := cmd.Output()

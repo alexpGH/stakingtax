@@ -6,16 +6,16 @@ networksBasics:
   chainInfo: /chain.json
 
 networks:
-  - name: fetchhub
-    denom: fet
-    exponent: 18
-    feedenom: afet
-    keepConfigNode: true
-    tradePairs4Tax:       #tradePairs4Tax 
-      endpoint: binance
-      pairs:
-        - FETBTC
-        - BTCEUR
+#  - name: fetchhub
+#    denom: fet
+#    exponent: 18
+#    feedenom: afet
+#    keepConfigNode: true
+#    tradePairs4Tax:       #tradePairs4Tax 
+#      endpoint: binance
+#      pairs:
+#        - FETBTC
+#        - BTCEUR
 
   - name: cosmoshub
     denom: atom

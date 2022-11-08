@@ -9,6 +9,8 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"strings"
+	"unicode/utf8"
 )
 
 func FatalDetails() string {
@@ -32,6 +34,13 @@ func StringCleaned(raw []byte) string {
 	s = re.ReplaceAllString(s, "")
 
 	return s
+}
+
+func StringExtendToLength(s string, length int) string {
+	var nLetters int = utf8.RuneCountInString(s)
+	var nAdd int = length - nLetters
+	var sOut string = s + strings.Repeat(" ", nAdd)
+	return sOut
 }
 
 func CheckFileExists(pathFile string) bool {

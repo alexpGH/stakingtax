@@ -489,9 +489,10 @@ func GetTxCountForAllRpcNodes(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 	var txCountOld int
 	var totalCount int
 	//var ourPubKey string
-	var nodeAddr string
+	var nodeAddr, nodeAddrPrint string
+	var err error
 
-	log.Println("Querying network " + chainName + "for txCount =======================================================================")
+	log.Println("Querying network " + chainName + " for txCount =======================================================================")
 
 	//get cfg's networks and relevant message types
 	networks := cfg.GetNetworksFieldString("Name")
@@ -533,15 +534,19 @@ func GetTxCountForAllRpcNodes(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 			txCountOld = taxcsv.GetLastTxCount(chainName + "_" + ourAddr + "_count.txt")
 
 			//=== get only 1 tx to get header info about nr of total transactions
-			totalCount = queryTotalCountFromNode(chainInfos[networkIdx].DaemonName, ourAddr, nodeAddr)
-			//blockHeight = queryHeightFromNode(chainInfos[i].DaemonName, ourAddr, totalCount, node.Address)
-			log.Println("      [I] node: txCountOld/totalCount: " + nodeAddr + ": " + strconv.Itoa(txCountOld) + "/" + strconv.Itoa(totalCount))
-
+			totalCount, err = queryTotalCountFromNode(chainInfos[networkIdx].DaemonName, ourAddr, nodeAddr)
+			nodeAddrPrint = utils.StringExtendToLength(nodeAddr, 70)
+			if err == nil {
+				log.Println("      [I] node: txCountOld/totalCount: " + nodeAddrPrint + strconv.Itoa(txCountOld) + "/" + strconv.Itoa(totalCount))
+			} else {
+				//we inform that an error happened, but keep running to query other nodes
+				log.Println("      [I] node: txCountOld/totalCount: " + nodeAddrPrint + strconv.Itoa(txCountOld) + "/ error in query")
+			}
 		} //for over networks addresses in cfgAdr
 
 	} // for over the rpc nodes
 
-	log.Println("[OK] Done querying nodes for txcount ==================================================================")
+	log.Println("[OK] Done querying nodes for txcount: we have / node has ==================================================================")
 
 } //GetTxCountForAllRpcNodes
 
@@ -560,17 +565,20 @@ func queryTotalCount(daemonName string, ourAddr string) int {
 }
 
 // get only 1 tx to get header info about nr of total transactions from a specific node
-func queryTotalCountFromNode(daemonName string, ourAddr string, node string) int {
+func queryTotalCountFromNode(daemonName string, ourAddr string, node string) (int, error) {
 	var totalCount int
 	var txsRespThin *TxsResp
 	var err error
 
-	txsRespThin = queryOneTxFromNode(daemonName, ourAddr, node, 1)
+	txsRespThin, err = queryOneTxFromNode(daemonName, ourAddr, node, 1)
+	if err != nil {
+		return 0, err
+	}
 
 	totalCount, err = strconv.Atoi(txsRespThin.TotalCount)
 	utils.ErrDefaultFatal(err) //on err log.Fatal with details
 
-	return totalCount
+	return totalCount, err
 }
 
 func queryHeight(daemonName string, ourAddr string, txCount int) int {
@@ -591,7 +599,10 @@ func queryHeightFromNode(daemonName string, ourAddr string, txCount int, node st
 	var txsRespThin *TxsResp
 	var err error
 
-	txsRespThin = queryOneTxFromNode(daemonName, ourAddr, node, txCount)
+	txsRespThin, err = queryOneTxFromNode(daemonName, ourAddr, node, txCount)
+	if err != nil {
+		utils.ErrDefaultFatal(err)
+	}
 
 	height, err = strconv.Atoi(txsRespThin.Txs[0].Height)
 	utils.ErrDefaultFatal(err)
@@ -616,20 +627,22 @@ func queryOneTx(daemonName string, ourAddr string, page int) *TxsResp {
 }
 
 // get only 1 tx and unmarhsal
-func queryOneTxFromNode(daemonName string, ourAddr string, node string, page int) *TxsResp {
+func queryOneTxFromNode(daemonName string, ourAddr string, node string, page int) (*TxsResp, error) {
 
 	txsRespThin := &TxsResp{}
 	out, err := exec.Command(daemonName, "--node", node, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", "1", "-out", "json").CombinedOutput()
 
 	if err != nil {
 		s := string(out)
-		err = fmt.Errorf("%w; %v", err, s)
-		utils.ErrDefaultFatal(err) //on err log.Fatal with detail
+		err = fmt.Errorf("%w; %v; %v", err, s, utils.FatalDetails())
+		//utils.ErrDefaultFatal(err) //on err log.Fatal with detail
+		return nil, err
 	}
+
 	err = json.Unmarshal(out, &txsRespThin)
 	utils.ErrDefaultFatal(err) //on err log.Fatal with details
 
-	return txsRespThin
+	return txsRespThin, nil
 }
 
 //This is similar to the standard Index function for slices, but applied
