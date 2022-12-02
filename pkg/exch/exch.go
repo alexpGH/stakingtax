@@ -91,7 +91,7 @@ func GetFiatBaseFactCBPro(t time.Time, pair string, sLogSep string) (float64, bo
 	//type CBProData [][6]interface{}
 	type CBProData [2][6]float64
 	/* https://docs.cloud.coinbase.com/exchange/reference/exchangerestapi_getproductcandles
-	   conbase pro provides a vector of 6 float64 fields
+	   coinbase pro provides a vector of 6 float64 fields
 	       time bucket start time
 	       low lowest price during the bucket interval
 	       high highest price during the bucket interval
@@ -103,17 +103,19 @@ func GetFiatBaseFactCBPro(t time.Time, pair string, sLogSep string) (float64, bo
 	layout2 := "2006-01-02"
 
 	//CBPro requires us to query 2 days to get a result.
-	// e.g. the 05-14 - 05-15 for the 05-14
+	// e.g. the 05-14 - 05-15 for the 05-15
 	// the result is then the bucket start time at 05-15 00:00 and start time 05-14 00:00 (time sequence in reverse order)
-	// -> we need to check the first buckets start time, as it is the second buckets close time,
+	// switched to open, as close will not be defined when running on the current date
+	// open: we use the first result time and price
+	// close: -> we need to check the first buckets start time, as it is the second buckets close time,
 	// and use the second buckets close
 
 	//add a day for query end
-	t1 := t.AddDate(0, 0, 1)
+	t1 := t.AddDate(0, 0, -1)
 
 	//cbpro
 	sApiBase := "https://api.pro.coinbase.com/products/"
-	sApiTail := "/candles?start=" + t.Format(layout2) + "T00:00:00Z" + "&end=" + t1.Format(layout2) + "&granularity=86400"
+	sApiTail := "/candles?start=" + t1.Format(layout2) + "T00:00:00Z" + "&end=" + t.Format(layout2) + "&granularity=86400"
 
 	cbProData := new(CBProData)
 
@@ -155,7 +157,7 @@ func GetFiatBaseFactCBPro(t time.Time, pair string, sLogSep string) (float64, bo
 
 	if tSucc {
 		//as discussed above: the [1] buckets close value is what we are interested in
-		factOut = cbProData[1][4]
+		factOut = cbProData[1][3] //3 is now open price, close was 4
 	}
 
 	return factOut, tSucc
@@ -221,7 +223,8 @@ func GetFiatBaseFactBinance(t time.Time, pair string, sLogSep string) (float64, 
 		tSucc = false
 	}
 
-	closeTime = binanceData[0][6].(float64)
+	// we opted for the open price, as close is not defined if the code is running on the day of the reward
+	closeTime = binanceData[0][0].(float64) //close was 6
 	tResClose = time.UnixMilli(int64(math.Round(closeTime)))
 
 	//sanity check time diff or close time
@@ -233,7 +236,7 @@ func GetFiatBaseFactBinance(t time.Time, pair string, sLogSep string) (float64, 
 	}
 
 	if tSucc {
-		sClose := binanceData[0][4].(string)
+		sClose := binanceData[0][1].(string) //close was [4]
 		factOut, err = strconv.ParseFloat(sClose, 64)
 		if err != nil {
 			log.Printf(sLogSep+"[WARN] Can not convert binance close to float! Skipping Fiat value for this data point! Error was %w ."+utils.FatalDetails(), err)

@@ -6,6 +6,7 @@ import (
 	nw "alexp/stakingtax/pkg/network"
 	"alexp/stakingtax/pkg/taxcsv"
 	"alexp/stakingtax/pkg/utils"
+	"time"
 
 	"encoding/json"
 	"fmt"
@@ -66,7 +67,8 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 	var pageTotal, totalCount int
 	var err error
 	var sLogSep string
-	tradePairs4Tax := &configData.TradePairs4TaxType{}
+	//tradePairs4Tax := &configData.TradePairs4TaxType{}
+	var tradePairs4Tax *configData.TradePairs4TaxType
 
 	//get cfg's networks and relevant message types
 	networks := cfg.GetNetworksFieldString("Name")
@@ -143,16 +145,40 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 				txsResp := &TxsResp{}
 				log.Println("   [I] querying page: " + strconv.Itoa(page) + "/" + strconv.Itoa(pageTotal) + " - this may take some time!")
 
-				//--- query txs
-				out, err := exec.Command(chainInfos[networkIdx].DaemonName, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", strconv.Itoa(pageLimit), "-out", "json").CombinedOutput()
-				if err != nil {
-					s := string(out)
-					err = fmt.Errorf("%w; %v", err, s)
-					utils.ErrDefaultFatal(err) //on err log.Fatal with detail
-				}
+				//=== sometimes result is illformed; retry in these cases, break if error-free result
+				for iRetry := 0; iRetry <= cfg.Query.Nretry; iRetry++ {
+					//--- query txs
+					out, err := exec.Command(chainInfos[networkIdx].DaemonName, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", strconv.Itoa(pageLimit), "-out", "json").CombinedOutput()
+					if err != nil {
+						if iRetry < cfg.Query.Nretry {
+							// try again
+							log.Println("       Err in retrieving query result, retrying!")
+							time.Sleep(time.Second * time.Duration(cfg.Query.Tretry))
+							continue
+						} else {
+							// fail with details
+							s := string(out)
+							err = fmt.Errorf("%w; %v", err, s)
+							utils.ErrDefaultFatal(err) //on err log.Fatal with detail
+						}
+					}
 
-				err = json.Unmarshal(out, &txsResp)
-				utils.ErrDefaultFatal(err) //on err log.Fatal with details
+					err = json.Unmarshal(out, &txsResp)
+					if err != nil {
+						if iRetry < cfg.Query.Nretry {
+							// try again
+							log.Println("       Err in unmarshalling query result, retrying!")
+							time.Sleep(time.Second * time.Duration(cfg.Query.Tretry))
+							continue
+						} else {
+							// fail with details
+							utils.ErrDefaultFatal(err) //on err log.Fatal with details
+						}
+					}
+
+					// down here means successfully retriefed and unmarshalled, we can exit the loop
+					break
+				}
 
 				//get []*taxcsv.TaxCsv holding the relevant rows
 				newTaxCsvRows := processRecTxs(txsResp, blockHeightOld, ourAddr, ourPubKey, cfg, networkIdx)

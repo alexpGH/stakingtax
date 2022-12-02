@@ -120,6 +120,8 @@ networks:
 query:
   pageLimit: 40
   txStepBack: 1 #in case we need to go backwards for matsching blockheight, start with this stepsize, doubled in each cycle
+  nRetry: 100   #in case query result is invalid, how often should we retry
+  tRetry: 20    #in case we retry, wait this amount of s before retrying
   
 taxRelevantMessageTypes:
   - /cosmos.staking.v1beta1.MsgDelegate

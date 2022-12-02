@@ -34,6 +34,8 @@ type Cfg struct {
 	Query struct {
 		PageLimit  int `yaml:"pageLimit"`
 		TxStepBack int `yaml:"txStepBack"`
+		Nretry     int `yaml:"nRetry"`
+		Tretry     int `yaml:"tRetry"`
 	} `yaml:"query"`
 	TaxRelevantMessageTypes []string `yaml:"taxRelevantMessageTypes"`
 }
