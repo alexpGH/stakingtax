@@ -7,6 +7,7 @@ import (
 	"alexp/stakingtax/pkg/taxcsv"
 	"alexp/stakingtax/pkg/utils"
 	"time"
+	"unicode"
 
 	"encoding/json"
 	"fmt"
@@ -61,7 +62,7 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 	var addrs []string
 	var pubKeys []string
 	var blockHeightOld, blockHeight int
-	var txCountOld, txCountUsed int
+	var txCountOld, txCountUsed, txRecieved int
 	var page int
 	var ourPubKey string
 	var pageTotal, totalCount int
@@ -148,8 +149,14 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 				//=== sometimes result is illformed; retry in these cases, break if error-free result
 				for iRetry := 0; iRetry <= cfg.Query.Nretry; iRetry++ {
 					//--- query txs
+					//log.Println("Query command used:")
+					//log.Println(chainInfos[networkIdx].DaemonName + " query" + " txs" + " --events" + " 'message.sender=" + ourAddr + "'" + " --page " + strconv.Itoa(page) + " --limit " + strconv.Itoa(pageLimit) + " -out" + " json")
 					out, err := exec.Command(chainInfos[networkIdx].DaemonName, "query", "txs", "--events", "'message.sender="+ourAddr+"'", "--page", strconv.Itoa(page), "--limit", strconv.Itoa(pageLimit), "-out", "json").CombinedOutput()
 					if err != nil {
+						//s := string(out)
+						//err = fmt.Errorf("%w; %v", err, s)
+						//utils.ErrDefaultFatal(err) //on err log.Fatal with detail
+
 						if iRetry < cfg.Query.Nretry {
 							// try again
 							log.Println("       Err in retrieving query result, retrying!")
@@ -184,16 +191,55 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 				newTaxCsvRows := processRecTxs(txsResp, blockHeightOld, ourAddr, ourPubKey, cfg, networkIdx)
 				if len(newTaxCsvRows) > 0 {
 					allNewTaxCsvRows = append(allNewTaxCsvRows, newTaxCsvRows...)
+
+					//increase counter for per page write - below set to totalcount if all was successful
+					txCountOld = txCountOld + len(newTaxCsvRows)
+				} else {
+					// this happens e.g. after pruning: we do not process a single entry, this means we need to increase total count
+					// from received (but not new entries)
+					txRecieved, err = strconv.Atoi(txsResp.Count)
+					utils.ErrDefaultFatal(err)
+					txCountOld = txCountOld + txRecieved
 				}
 
 				//println(len(newTaxCsvRows))
 
-				if txsResp.PageNumber == txsResp.PageTotal {
-					//update lastCount
-					txCountOld, err = strconv.Atoi(txsResp.TotalCount)
-					utils.ErrDefaultFatal(err)
+				//=== Process each pages'result to csv immediately to prevent loss in case of errors
+				//=== add FIAT base value for receivedAmount and feeAmount ()
+				nNewRows := len(allNewTaxCsvRows)
+				if len(allNewTaxCsvRows) > 0 {
+					sLogSep = "       "
+					log.Println(sLogSep + "[I] Getting Fiat conversion for received and fee amounts")
+
+					//get trade pairs sub struct for conversion
+					tradePairs4Tax = &cfg.Networks[networkIdx].TradePairs4Tax
+
+					//do the conversion for all rows
+					exch.AddFiatBaseInfo2TaxCsvData(tradePairs4Tax, allNewTaxCsvRows, sLogSep+"   ")
+
+					//=== append new rows to csv file
+					taxcsv.AppendNewTaxRows(network.ChainName+"_"+ourAddr+".csv", allNewTaxCsvRows)
+
+					//=== empty the slice
+					allNewTaxCsvRows = []*taxcsv.TaxCsv{}
+
+					//=== update lastCount from totalCount in case last page - to enforce matching this value
+					if txsResp.PageNumber == txsResp.PageTotal {
+						// old approach when first collecting all pages
+						txCountOld, err = strconv.Atoi(txsResp.TotalCount)
+						utils.ErrDefaultFatal(err)
+					}
+
+					//write every page's data -> update txCountOld to number of used elements from the current page
+					txCountOld = txCountOld + nNewRows //
+
 					//write to file
 					taxcsv.UpdateLastTxCount(network.ChainName+"_"+ourAddr+"_count.txt", txCountOld)
+
+					log.Println("       [OK] page done, txCount now: " + strconv.Itoa(txCountOld))
+				}
+
+				if txsResp.PageNumber == txsResp.PageTotal {
 					break // the loop over new pages
 				}
 
@@ -202,23 +248,8 @@ func GetProcessTxsForNetworks(cfg *configData.Cfg, cfgAdr *configData.CfgAdr, ch
 
 			} //for over the pages
 
-			//=== add FIAT base value for receivedAmount and feeAmount
-			if len(allNewTaxCsvRows) > 0 {
-				sLogSep = "   "
-				log.Println(sLogSep + "Getting Fiat conversion for received and fee amounts")
-
-				//get trade pairs sub struct for conversion
-				tradePairs4Tax = &cfg.Networks[networkIdx].TradePairs4Tax
-
-				//do the conversion for all rows
-				exch.AddFiatBaseInfo2TaxCsvData(tradePairs4Tax, allNewTaxCsvRows, sLogSep+"   ")
-
-				//=== append new rows to csv file
-				taxcsv.AppendNewTaxRows(network.ChainName+"_"+ourAddr+".csv", allNewTaxCsvRows)
-
-			}
-
-			log.Println("   [OK] done, txCount now: " + strconv.Itoa(txCountOld))
+			//once all has been done update totalcount file with true totalCount
+			taxcsv.UpdateLastTxCount(network.ChainName+"_"+ourAddr+"_count.txt", totalCount)
 
 		} //for over networks addresses in cfgAdr
 
@@ -235,7 +266,7 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 	var newTaxCsvRow *taxcsv.TaxCsv
 	var tAtt, tMess, tWeSigned bool
 	var currMess, s1, s2 string
-	var n1, n2 int
+	var n1, n2, n3 int
 	var feeAmount, recAmount float64
 	var feeCurrency string
 	var tAddedFees, tCoinReceived, tFeeRow, tFeesToBeAdded bool
@@ -248,6 +279,8 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 		if heightInt <= blockHeightOld {
 			continue
 		}
+
+		//log.Println("Processing height " + tx.Height)
 
 		//if heightInt == {
 		//	println("Debug")
@@ -334,7 +367,22 @@ func processRecTxs(txsResp *TxsResp, blockHeightOld int, ourAddr string, ourPubK
 							n1 = len(cfg.Networks[networkIdx].FeeDenom)
 							n2 = len(attr.Value)
 
-							s1 = attr.Value[:n2-n1]
+							//sometimes, extra text may preceede the actual value (e.g. some IBC info) -> we search for only number in front of the denom and stop at the first non-digit
+							n3 = n2 - n1 - 1 //right in front of denom
+							for {
+								if n3 < 0 {
+									break
+									//convert byte int8 to rune int32
+								} else if unicode.IsDigit(int32(attr.Value[n3])) {
+									n3 = n3 - 1
+								} else {
+									break
+								}
+							}
+							//n3 now at first non digit position or -1 0> shift by 1 for first digit
+							n3 = n3 + 1
+
+							s1 = attr.Value[n3 : n2-n1]
 							s2 = attr.Value[n2-n1:]
 
 							if s2 != cfg.Networks[networkIdx].FeeDenom {
@@ -492,7 +540,8 @@ func checkHypothesisUpdateTxCount(txCountOld int, totalCount int, blockHeight in
 				break
 			}
 			//
-			stepBackUsed = stepBackUsed * 2
+			//stepBackUsed = stepBackUsed * 2
+			stepBackUsed = stepBackUsed + 1
 		}
 
 		if !tFound {
