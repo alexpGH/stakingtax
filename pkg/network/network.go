@@ -16,14 +16,20 @@ import (
 	"alexp/stakingtax/pkg/utils"
 )
 
-//chainInfo subpart of the json
+type ChainInfoSub struct {
+	RecommendedVersion string   `json:"recommended_version"`
+	CompatibleVersions []string `json:"compatible_versions"`
+}
+
+// chainInfo subpart of the json
 type ChainInfo struct {
 	ChainName  string `json:"chain_name"`
 	ChainId    string `json:"chain_id"`
 	DaemonName string `json:"daemon_name"`
 	Codebase   struct {
-		RecommendedVersion string   `json:"recommended_version"`
-		CompatibleVersions []string `json:"compatible_versions"`
+		RecommendedVersion string         `json:"recommended_version"`
+		CompatibleVersions []string       `json:"compatible_versions"`
+		Versions           []ChainInfoSub `json:"versions"` //since 2023 there is also versions and not only codebase; however still use codebase (versions seem only having extra entries during upgrade)
 	} `json:"codebase"`
 	Apis struct {
 		Rpc []struct {
@@ -33,7 +39,7 @@ type ChainInfo struct {
 	TProcess bool `json:"ourExtraParameter"`
 }
 
-//checks network configurations and possibly updates the config
+// checks network configurations and possibly updates the config
 func CheckNetworks(cfg *configData.Cfg) []ChainInfo {
 
 	var chainInfos []ChainInfo
@@ -57,7 +63,7 @@ func CheckNetworks(cfg *configData.Cfg) []ChainInfo {
 	return chainInfos
 } // CheckNetworks
 
-//fetches chain_info.json from github chain-registry
+// fetches chain_info.json from github chain-registry
 func fetchChainInfo(cfg *configData.Cfg, chainName string) ChainInfo {
 
 	webAddr := cfg.NetworksBasics.ChainRegistry + cfg.NetworksBasics.ChainExtraPath + chainName + cfg.NetworksBasics.ChainInfo
@@ -85,8 +91,11 @@ func fetchChainInfo(cfg *configData.Cfg, chainName string) ChainInfo {
 
 } //fetchChainInfo
 
-//check to have a compatible daemon version
+// check to have a compatible daemon version
 func ensureValidDaemonVersion(chainI ChainInfo) {
+
+	//--- switch for using Codebase.Versions instead of Codebase
+	tUseCodebase := true // default is using codebase; version list has more than the trivial (same as Codebase) entry only during upgrade phases.
 
 	//--- check daemon version
 	out, err := exec.Command(chainI.DaemonName, "version").CombinedOutput()
@@ -94,22 +103,42 @@ func ensureValidDaemonVersion(chainI ChainInfo) {
 	//convert to string, remove newline characters
 	yourV := utils.StringCleaned(out)
 
-	if yourV != chainI.Codebase.RecommendedVersion {
-		log.Printf("Your daemon version is %v, while recommended is %v\n", yourV, chainI.Codebase.RecommendedVersion)
+	//
+	if tUseCodebase {
+		// --- use Codebase
+		if yourV != chainI.Codebase.RecommendedVersion {
+			log.Printf("Your daemon version is %v, while recommended in codebase is %v\n", yourV, chainI.Codebase.RecommendedVersion)
 
-		if slices.Contains(chainI.Codebase.CompatibleVersions, yourV) {
-			log.Println("[OK] Found your daemon version in compatible versions -> going on")
+			if slices.Contains(chainI.Codebase.CompatibleVersions, yourV) {
+				log.Println("[OK] Found your daemon version in codebase's compatible versions -> going on")
+			} else {
+				myS := fmt.Sprintf("%v", chainI.Codebase.CompatibleVersions)
+				log.Fatal("Your daemon version is also not in the list of compatible versions: " + myS + ". " + utils.FatalDetails())
+			}
 		} else {
-			myS := fmt.Sprintf("%v", chainI.Codebase.CompatibleVersions)
-			log.Fatal("Your daemon version is also not in the list of compatible versions: " + myS + ". " + utils.FatalDetails())
+			log.Println("[OK] Your daemon version: " + yourV + " is up to date (compared to codebase)!")
 		}
+
 	} else {
-		log.Println("[OK] Your daemon version: " + yourV + " is up to date!")
+		//--- use Codebase.Versions sublist
+		if yourV != chainI.Codebase.Versions[0].RecommendedVersion {
+			log.Printf("Your daemon version is %v, while recommended is %v\n", yourV, chainI.Codebase.Versions[0].RecommendedVersion)
+
+			if slices.Contains(chainI.Codebase.Versions[0].CompatibleVersions, yourV) {
+				log.Println("[OK] Found your daemon version in compatible versions -> going on")
+			} else {
+				myS := fmt.Sprintf("%v", chainI.Codebase.Versions[0].CompatibleVersions)
+				log.Fatal("Your daemon version is also not in the list of compatible versions: " + myS + ". " + utils.FatalDetails())
+			}
+		} else {
+			log.Println("[OK] Your daemon version: " + yourV + " is up to date!")
+		}
+
 	}
 
 } //ensureValidDaemonVersion
 
-//ensures the correct chain_id and a responsive node in the config
+// ensures the correct chain_id and a responsive node in the config
 func ensureCorrectConfigChainId(chainI ChainInfo) {
 	log.Println("Checking chain-Id in config")
 
@@ -123,7 +152,7 @@ func ensureCorrectConfigChainId(chainI ChainInfo) {
 		log.Println("	Your chain-id: " + chIdCurr + " does not match the current chain (from chainregistry): " + chainI.ChainId + " => replacing it in the config")
 
 		//--- try to update config
-		out, err = exec.Command(chainI.DaemonName, "config", "chain-id", chainI.ChainId).CombinedOutput()
+		_, err = exec.Command(chainI.DaemonName, "config", "chain-id", chainI.ChainId).CombinedOutput()
 		utils.ErrDefaultFatal(err) //on err log.Fatal with details
 
 		//--- check to ensure it was successfull
@@ -142,7 +171,7 @@ func ensureCorrectConfigChainId(chainI ChainInfo) {
 
 } //ensureCorrectConfigChainId
 
-//helper function: checks status of a gien node - is it responsive?
+// helper function: checks status of a gien node - is it responsive?
 func CheckNode(daemonName string, currAddr string, tcheckAddChannel bool) string {
 
 	finalAddr := currAddr
@@ -177,7 +206,7 @@ func EnsurePortInAddress(currAddr string) string {
 	return finalAddr
 }
 
-//ensures the node config to be correct (responsive node)
+// ensures the node config to be correct (responsive node)
 func ensureCorrectConfigNode(chainI *ChainInfo, keepConfigNode bool) {
 	log.Println("Checking to have a responsive node")
 
@@ -224,7 +253,7 @@ func ensureCorrectConfigNode(chainI *ChainInfo, keepConfigNode bool) {
 	}
 
 	//--- try to update config
-	out, err = exec.Command(chainI.DaemonName, "config", "node", addrUsed).CombinedOutput()
+	_, err = exec.Command(chainI.DaemonName, "config", "node", addrUsed).CombinedOutput()
 	utils.ErrDefaultFatal(err) //on err log.Fatal with details
 
 	//--- check to ensure it was successfull
@@ -240,11 +269,11 @@ func ensureCorrectConfigNode(chainI *ChainInfo, keepConfigNode bool) {
 
 //This is similar to the standard Index function for slices, but applied
 //to our slice holding the address in a substruct Address from json unmarshalling
-func indexAddressField(chainI ChainInfo, addr string) int {
-	for i, vs := range chainI.Apis.Rpc {
-		if addr == vs.Address {
-			return i
-		}
-	}
-	return -1
-}
+//func indexAddressField(chainI ChainInfo, addr string) int {
+//	for i, vs := range chainI.Apis.Rpc {
+//		if addr == vs.Address {
+//			return i
+//		}
+//	}
+//	return -1
+//}
